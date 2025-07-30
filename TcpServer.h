@@ -26,7 +26,7 @@ private:
     std::function<void (spConnection)> m_send_complete_callback;
     std::function<void ()> m_epoll_timeout_callback;
 public:
-    TcpServer(const std::string & ip, const uint32_t port, int thread_num);
+    TcpServer(const std::string & ip, const uint32_t port, int thread_num, int timeout);
     ~TcpServer();
 
     void start();

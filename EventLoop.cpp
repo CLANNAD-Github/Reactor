@@ -46,13 +46,13 @@ void EventLoop::loop()
     std::vector<Channel *> vec_ch;
     while (m_flag_stop != true)
     {
-        vec_ch = m_ep->loop(5 * 1000);
-        // vec_ch = m_ep->loop();
+        vec_ch = m_ep->loop();
         // 返回空容器，说明 epoll 超时，回调 tcpserver 的超时函数
         if (vec_ch.empty())
         {
             m_epolltimeout_callbackfn();
         }
+        // 没有超时，则各自处理各自的事件
         else
         {
             for (auto & ch : vec_ch)
@@ -119,11 +119,12 @@ void EventLoop::wakeup()
 
 void EventLoop::handle_wakeup()
 {
-    printf("handle_wakeup() called in thread %d\n", syscall(SYS_gettid));
+    // printf("handle_wakeup() called in thread %d\n", syscall(SYS_gettid));
     uint64_t val;
     std::function<void()> fn;
     read(m_eventfd, &val, sizeof(val));
 
+    // 操作队列前先获取锁
     std::lock_guard<std::mutex> lock(m_mutex);
 
     // 唤醒一次，执行队列中所有的任务
@@ -137,11 +138,12 @@ void EventLoop::handle_wakeup()
 
 void EventLoop::handle_timer()
 {
-    // 超时调用该函数，重新设置超时时间
+    // 定时调用该函数，重新设置超时时间
     struct itimerspec new_value = {0};
     new_value.it_value.tv_sec = 5;
     new_value.it_value.tv_nsec = 0;
     timerfd_settime(m_timerfd, 0, &new_value, 0);
+
     if (m_ismainloop)
     {
         // printf("闹钟时间到，主事件循环（ThreadID：%d）执行函数。。。\n", syscall(SYS_gettid));
@@ -153,23 +155,40 @@ void EventLoop::handle_timer()
         //printf("ThreadID:%d FD:", syscall(SYS_gettid));
         time_t now = time(NULL);
         
-        for (auto it = m_con.begin(); it != m_con.end(); it++)
+        // printf("Thread(%d) con_map.size():%d \n", syscall(SYS_gettid), m_con.size());
+        for (auto it : m_con)   // 注意迭代器失效问题，it != m_com.end() 这种方式可能不安全
         {
-            printf("%d ", it->first);
-            if (it->second->istimeout(now, 10))
+            // printf("Thread(%d) FD:%d map size:%d\n", syscall(SYS_gettid), it.first, m_con.size());
+            if (it.second->istimeout(now, 100))  // 链接的失效时间，应该由 TcpServer 或 EchoServer 指定
             {
-                printf("已超时. ");
+                printf("Thread(%d) FD:%d 已超时\n", syscall(SYS_gettid), it.first);
                 // Connection 超时，不仅要删除 EventLoop 中的 Connection 指针，还需要删除 TcpServer 中的指针
                 // EventLoop 中没有 TcpServer 对象，而是 TcpServer 中包含 EventLoop 对象，因此可以采用回调函数的方式回调删除 Connection 的函数
-                m_erase_connection_callbackfn(it->first);
-                it = m_con.erase(it);
+                m_erase_connection_callbackfn(it.first);
+                // 此处需要加锁，是因为对 m_con 的操作有 主线程（向容器中添加Connection链接） 和 IO 从事件线程（从容器中删除 Connection）
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex_map);
+                    m_con.erase(it.first);
+                }
             }
         }
-        putchar('\n');
+        // printf("闹钟时间到，从事件循环（ThreadID：%d）执行函数。。。over!\n", syscall(SYS_gettid));
+        // putchar('\n');
     }
 }
 
+// 主事件循环接收新的 Connection 会调用该函数添加新连接
 void EventLoop::add_Connection(spConnection con)
 {
+    // 主事件循环会调用该函数，为了避免与从事件的冲突，因此加上锁
+    std::lock_guard<std::mutex> lock(m_mutex_map);
     m_con[con->get_fd()] = con;
+}
+
+// 从事件循环删除断开的 Connection 会调用该函数删除连接
+void EventLoop::remove_Connection(spConnection con)
+{
+    // 从事件循环会调用该函数，为了避免与主事件的冲突，因此加上锁
+    std::lock_guard<std::mutex> lock(m_mutex_map);
+    m_con.erase(con->get_fd());
 }

@@ -63,11 +63,11 @@ bool Buffer::pickmessage(std::string& message)
     else if(m_sep == 1)
     {
         int len;
-        memcpy(&len, m_data.c_str(), 4);
-        if (m_data.size() >= 4+len)
+        memcpy(&len, m_data.c_str(), sizeof(int));
+        if (m_data.size() >= sizeof(int) + len)
         {
-            message = m_data.substr(4, len);
-            m_data.erase(0, len+4);
+            message = m_data.substr(sizeof(int), len);
+            m_data.erase(0, len + sizeof(int));
         }
     }
     return true;

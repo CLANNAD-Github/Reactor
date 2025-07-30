@@ -26,6 +26,7 @@ private:
     std::unique_ptr<Channel> m_timer_channel;           // 事件循环的定时 Channel，注册 事件循环的 时间 FD，从而监听该FD上的超时事件
     bool m_ismainloop;                                  // 表示该循环是否为主事件循环
     std::map<int, spConnection> m_con;                  // 存放所有在该事件循环对象上的所有 Connection
+    std::mutex m_mutex_map;                             // 操作链接容器的互斥锁（主线程和从线程都会操作，因此需要加锁）
     std::function<void(int)> m_erase_connection_callbackfn;     // 删除 TcpServer 中的超时 Connection 的回调函数成员，在 Connection 超时时回调
     std::atomic_bool m_flag_stop;
 
@@ -49,5 +50,6 @@ public:
     void handle_timer();
 
     void add_Connection(spConnection con);
+    void remove_Connection(spConnection con);
 };
 

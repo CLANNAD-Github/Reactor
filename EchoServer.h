@@ -14,7 +14,7 @@ private:
     TcpServer m_server;
     std::unique_ptr<ThreadPool> m_work_tp;
 public:
-    EchoServer(const std::string & ip, const uint32_t port, int thread_num_io = 3, int thread_num_work = 3);
+    EchoServer(const std::string & ip, const uint32_t port, int thread_num_io = 3, int thread_num_work = 3, int timeout = -1, int con_timeout = 30);
     ~EchoServer();
 
     // 从 TcpServer 提供的接口中选择出来进行具体实现    

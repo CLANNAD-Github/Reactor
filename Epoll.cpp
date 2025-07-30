@@ -2,7 +2,7 @@
 #include "Channel.h"
 #include <unistd.h>
 
-Epoll::Epoll()
+Epoll::Epoll(int timeout) : m_timeout(timeout)
 {
     m_epollfd = epoll_create(1);
     if (m_epollfd == -1)
@@ -54,7 +54,7 @@ void Epoll::remove_channel(Channel * ch)
 {
     if (ch->in_epoll())
     {
-        printf("Epoll::remove_channel, ch->fd(%d)\n", ch->get_fd());
+        // printf("Epoll::remove_channel, ch->fd(%d)\n", ch->get_fd());
         if (epoll_ctl(m_epollfd, EPOLL_CTL_DEL, ch->get_fd(), NULL) == -1)
         {
             printf("epoll_ctl() DEL faild. exit.\n");
@@ -63,10 +63,10 @@ void Epoll::remove_channel(Channel * ch)
     }
 }
 
-std::vector<Channel*> Epoll::loop(int timeout)
+std::vector<Channel*> Epoll::loop()
 {
     // epoll_wait 函数会被阻塞，直到有消息进来，注意该阻塞在那个线程中
-    int res = epoll_wait(m_epollfd, m_evs, MaxEvents, timeout);
+    int res = epoll_wait(m_epollfd, m_evs, MaxEvents, m_timeout);
         
     if (res < 0)
     {
