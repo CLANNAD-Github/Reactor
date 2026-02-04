@@ -1,55 +1,69 @@
 #pragma once
-#include "Epoll.h"
+
+class Epoll;
+class Channel;
+
 #include <functional>
+#include <memory>
+#include <vector>
+#include <iostream>
+#include <thread>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <queue>
 #include <mutex>
-#include <memory>
+#include <sys/timerfd.h>
 #include <map>
+#include <memory>
 #include <atomic>
 
+class Channel;
 class Connection;
-using spConnection = std::shared_ptr<Connection>;
 
 class EventLoop
 {
+    using spConnection = std::shared_ptr<Connection>;
 private:
-    Epoll* m_ep = nullptr;                              // 一个事件对应一个 Epol 对象
-    std::function<void()> m_epolltimeout_callbackfn;    // 关闭链接的回调函数 Channel 对象时就指定
-    pid_t m_threadid;                                   // 事件循环所在的线程id
-    std::queue<std::function<void()>> m_task_queue;     // 事件循环的任务队列
-    std::mutex m_mutex;                                 // 操作任务队列的互斥锁
-    int m_eventfd;                                      // 事件循环的事件 FD
-    std::unique_ptr<Channel> m_event_channel;           // 事件循环的事件 Channel，注册 事件循环的 事件 FD，从而监听该FD上的事件
-    int m_timerfd;                                      // 事件循环的定时 FD
-    std::unique_ptr<Channel> m_timer_channel;           // 事件循环的定时 Channel，注册 事件循环的 时间 FD，从而监听该FD上的超时事件
-    bool m_ismainloop;                                  // 表示该循环是否为主事件循环
-    std::map<int, spConnection> m_con;                  // 存放所有在该事件循环对象上的所有 Connection
-    std::mutex m_mutex_map;                             // 操作链接容器的互斥锁（主线程和从线程都会操作，因此需要加锁）
-    std::function<void(int)> m_erase_connection_callbackfn;     // 删除 TcpServer 中的超时 Connection 的回调函数成员，在 Connection 超时时回调
-    std::atomic_bool m_flag_stop;
+
+    std::unique_ptr<Epoll> m_epoll;
+    std::function<void (EventLoop *)> m_timeout_callback_fn;
+    std::function<void (spConnection)> m_remove_connection_callback_fn;
+
+    pid_t m_thread_id; // 标识该事件循环的 线程ID，便于后面进行判断
+    std::queue<std::function<void ()>> m_send_queue; // 事件循环的发送队列，Connection 的发送任务都存放于此，事件循环负责取出并发送
+    std::mutex m_mutex_send_queue;
+
+    int m_eventfd;
+    std::unique_ptr<Channel> m_event_channel; // 事件循环 的Channel，用于通知 EventLoop 对象处理 event 事件
+    int m_timerfd;
+    std::unique_ptr<Channel> m_timer_channel; // 事件循环 的闹钟 Channel，用于通知 EventLoop 对象处理 event 事件
+
+    std::mutex m_mutex_map_con;
+    std::map<int, spConnection> m_map_con;
+    int m_timeout_con;  // 客户端连接的超时时间
+    int m_timer;        // 定时器的间隔时间
+    bool m_ismainloop;
+    std::atomic<bool>  m_stop_flag; // 原子类型的停止循环标志
 
 public:
-    EventLoop(Epoll * ep, bool ismainloop);
+    EventLoop(bool ismainloop, int timer = -1, int timeout_con = -1);
     ~EventLoop();
 
-    Epoll* get_ep();
-    void loop();
+    pid_t thread_id() const;
+
+    void run(int epoll_timeout);
     void stop();
+
+    Epoll * epoll() const;
     void update_channel(Channel * ch);
     void remove_channel(Channel * ch);
-    void set_epolltimeout_callbackfn(std::function<void()> fn);
-    void set_erase_connection_callbackfn(std::function<void(int)> fn);
 
-    bool is_iniothread();
-    void enqueue(std::function<void()> fn);
+    void push_queue(std::function<void ()> fn);
+    void handle_eventfd();
+    void add_connection(spConnection con); // TcpServer 调用该函数添加新建的 Connection 链接
+    void remove_connection(spConnection con); // TcpServer 调用该函数添加新建的 Connection 链接
+    void handle_timerfd();
 
-    void wakeup();
-    void handle_wakeup();
-    void handle_timer();
-
-    void add_Connection(spConnection con);
-    void remove_Connection(spConnection con);
+    void set_timeout_callback_fn(std::function<void (EventLoop *)> fn);
+    void set_remove_connection_callback_fn(std::function<void (spConnection)> fn);
 };
-

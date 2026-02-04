@@ -1,53 +1,59 @@
 #pragma once
 
-#include "EventLoop.h"
-#include "Socket.h"
-#include "Channel.h"
+#include "TimeStamp.h"
 #include "Buffer.h"
-#include "Timestamp.h"
 #include <functional>
+#include <memory>
 #include <atomic>
 
-class Connection;
-using spConnection = std::shared_ptr<Connection>;
+class Socket;
+class Channel;
+class EventLoop;
 
 class Connection : public std::enable_shared_from_this<Connection>
 {
+    using spConnection = std::shared_ptr<Connection>;
 private:
-    // 注意成员初始化顺序
-    EventLoop * m_evloop;
-    std::shared_ptr<Socket> m_client_socket;
-    std::shared_ptr<Channel> m_client_channal;
-    std::atomic_bool m_disconnect; // 用于表示是否链接的状态，在工作线程和IO线程中都会用到，因此使用原子类型数据避免竞争
-    Timestamp m_tsp;
+    EventLoop * m_eventloop;
+    std::unique_ptr<Socket> m_client_socket;
+    std::unique_ptr<Channel> m_client_channel;
     
-    Buffer m_inputbuffer;
-    Buffer m_outputbuffer;
+    std::atomic<bool> m_disconnect;
 
-    std::function<void(spConnection)> m_sendcomplete_callbackfn;
-    std::function<void(spConnection, std::shared_ptr<std::string>)> m_handle_message_callbackfn;
-    std::function<void(spConnection)> m_close_callbackfn;
-    std::function<void(spConnection)> m_error_callbackfn;
+    Buffer m_recv_buffer;
+    Buffer m_send_buffer;
+
+    TimeStamp m_lasttime;
+
+    std::function<void (spConnection, std::string&) > m_handle_message_callback_fn;
+    std::function<void (spConnection)> m_handle_send_complete_callback_fn;
+    std::function<void (spConnection)> m_handle_close_connection_callback_fn;
+    std::function<void (spConnection)> m_handle_error_connection_callback_fn;
+
 public:
-    Connection(EventLoop* evloop, std::shared_ptr<Socket> client_socket);
+    Connection(EventLoop * eventloop, std::unique_ptr<Socket> client_socket, enum data_type type);
     ~Connection();
 
-    std::string get_ip() const;
-    uint16_t get_port() const;
-    int get_fd() const;
-    bool istimeout(time_t t, int val) const; // 判断该Connection 是否超时, t 为指定的时间戳，val为超时的时间（单位：秒）
+    std::string ip() const;
+    uint16_t port() const;
+    int fd() const;
 
-    void handle_message();
-    void send(std::shared_ptr<std::string> data);
-    void send_in_io_loop(std::shared_ptr<std::string> data); // 在事件循环中执行，将该函数放在事件循环的任务队列中
+    TimeStamp time_stamp() const;
+    bool disconnect() const;
+    void remove_from_eventloop();
 
-    void remove_channel();
-    void write_callback();
-    void close_callback();
+    bool in_io_thread() const;
+
+    void recv_callback();
+    void send_callback();
     void error_callback();
+    void close_callback();
 
-    void set_sendcomplete_callbackfn(std::function<void(spConnection)> fn);
-    void set_close_callbackfn(std::function<void(spConnection)> fn);
-    void set_error_callbackfn(std::function<void(spConnection)> fn);
-    void set_handle_message_callbackfn(std::function<void(spConnection, std::shared_ptr<std::string>)> fn);
+    void send_message(const char* data, size_t size);
+    void send_message_in_loop(std::shared_ptr<std::string> message);
+
+    void set_handle_message_callback_fn(std::function<void (spConnection, std::string&)> fn);
+    void set_handle_send_complete_callback_fn(std::function<void (spConnection)> fn);
+    void set_handle_close_connection_callback_fn(std::function<void (spConnection)> fn);
+    void set_handle_error_connection_callback_fn(std::function<void (spConnection)> fn);
 };

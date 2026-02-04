@@ -1,74 +1,71 @@
-
 #include "Buffer.h"
-#include <cstring>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
-Buffer::Buffer(const int sep) : m_sep(sep)
+Buffer::Buffer(enum data_type type) : m_type(type)
 {}
 
 Buffer::~Buffer()
 {}
 
+bool Buffer::empty() const { return m_data.empty(); }
+size_t Buffer::size() const { return m_data.size(); }
+void Buffer::erase(int pos, int size) { m_data.erase(pos, size); }
+void Buffer::clear() { m_data.clear(); }
+
 void Buffer::append(const char* data, size_t size)
 {
-    m_data.append(data, size);
-}
-
-void Buffer::append_with_sep(const char* data, int size)
-{
-    if (m_sep == 0)
+    switch (m_type)
+    {
+    case data_type::T_NONE:
     {
         m_data.append(data, size);
+        break;
     }
-    else if (m_sep == 1)
+    case data_type::T_INT_HEAD:
     {
-        m_data.append((char*)&size, sizeof(int));
+        m_data.append((char*)&size, sizeof(size));
         m_data.append(data, size);
+        break;
     }
-    else if (m_sep == 2)
-    {
-        m_data.append("\r\n\r\n", 4);
-        m_data.append(data, size);
+    default:
+        break;
     }
 }
 
-size_t Buffer::size() const
+bool Buffer::pick_message(std::string& message)
 {
-    return m_data.size();
-}
-
-const char* Buffer::data() const
-{
-    return m_data.data();
-}
-
-void Buffer::clear()
-{
-    m_data.clear();
-}
-
-void Buffer::erase(int pos, int size)
-{
-    m_data.erase(pos, size);
-}
-
-bool Buffer::pickmessage(std::string& message)
-{
-    if (m_data.empty())
+    if (m_data.size() < 4)
         return false;
-    
-    if (m_sep == 0)
-    {
-        message = m_data;
-    }
-    else if(m_sep == 1)
-    {
-        int len;
-        memcpy(&len, m_data.c_str(), sizeof(int));
-        if (m_data.size() >= sizeof(int) + len)
-        {
-            message = m_data.substr(sizeof(int), len);
-            m_data.erase(0, len + sizeof(int));
-        }
-    }
+    int size;
+    memcpy(&size, m_data.data(), sizeof(int));
+    if (size > m_data.size()-4)
+        return false;
+    m_data.erase(0, 4);
+    message.clear();
+    message.append(m_data.substr(0, size));
+    m_data.erase(0, size);
     return true;
+}
+
+int Buffer::recv_from_fd(int fd)
+{
+    char buffer[4096];
+    int nread = read(fd, buffer, sizeof(buffer));
+
+    if (nread <= 0)
+        return nread;
+    
+    m_data.append(buffer, nread);
+    return nread;
+}
+
+int Buffer::send_to_fd(int fd)
+{
+    int res = send(fd, m_data.data(), m_data.size(), 0);
+    if (res > 0)
+        m_data.erase(0, res);
+    return res;
 }

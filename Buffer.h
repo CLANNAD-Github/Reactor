@@ -1,20 +1,30 @@
+#pragma once
+
 #include <string>
+
+enum class data_type
+{
+    T_NONE = 0,
+    T_INT_HEAD = 1
+};
 
 class Buffer
 {
 private:
     std::string m_data;
-    const int m_sep;  // 0：表示没有分隔符 1：表示 4 字节整数作为分隔符。 2：表示采用 "\r\n\r\n" http 协议分隔符
+    enum data_type m_type;
 public:
-    Buffer(const int sep);
+    Buffer(enum data_type type);
     ~Buffer();
 
-    void erase(int pos, int size);
-    void append(const char* data, size_t size);
-    void append_with_sep(const char* data, int size);
+    bool empty() const;
     size_t size() const;
-    const char* data() const;
-    void clear();
-    bool pickmessage(std::string& message);
-};
 
+    bool pick_message(std::string& message);
+    void append(const char* data, size_t size);
+    int send_to_fd(int fd);
+    int recv_from_fd(int fd);
+
+    void erase(int pos, int size);
+    void clear();
+};

@@ -1,34 +1,37 @@
 #include "Acceptor.h"
 
-Acceptor::Acceptor(EventLoop* evloop, const std::string & ip, const uint32_t port)
-    : m_evloop(evloop), m_server_socket(create_nonblock_listenfd()), m_accept_channal(m_evloop, m_server_socket.get_fd())
+Acceptor::Acceptor(EventLoop * eventloop, const std::string& ip, uint16_t port) :
+    m_eventloop(eventloop),
+    m_server_socket(new Socket(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP), ip, port)),
+    m_server_channel(new Channel(m_eventloop, m_server_socket->fd(), true))
 {
+    m_server_socket->setkeepalive();
+    m_server_socket->setnodelay();
+    m_server_socket->setreuseaddr();
+    m_server_socket->setreuseport();
+    
     InetAddress server_addr(ip, port);
-    m_server_socket.set_keepalive(true);
-    m_server_socket.set_reuseaddr(true);
-    m_server_socket.set_reuseport(true);
-    m_server_socket.set_tcpnodelay(true);
-    m_server_socket.bind(server_addr);
-    m_server_socket.listen();
-
-    m_accept_channal.enable_read();
-    m_accept_channal.set_read_callbackfn(std::bind(&Acceptor::handle_connection, this));
+    m_server_socket->bind(server_addr);
+    m_server_socket->listen();
+    
+    m_server_channel->set_read_callback_fn(std::bind(&Acceptor::handle_new_connection, this));
+    m_server_channel->enable_read();
 }
 
 Acceptor::~Acceptor()
 {}
 
-void Acceptor::handle_connection()
+int Acceptor::fd() const { return m_server_socket->fd(); }
+EventLoop * Acceptor::eventloop() const { return m_eventloop; }
+
+void Acceptor::handle_new_connection()
 {
     InetAddress client_addr;
-    int client_fd = m_server_socket.accept(client_addr);
-    // 这里创建的 Socket 是属于 Conenction 的Socket，下面调用的回调函数，将最终传给 Connection 所有，因此这里采用 unique_ptr 传递就可，使用移动语义
-    std::shared_ptr<Socket> client_socket (new Socket(client_fd, client_addr.get_ip(), client_addr.get_port()));
-    // 回调 TcpServer 类中的函数，注意使用移动语义
-    m_handle_connection_callbackfn(std::move(client_socket));
+    int client_fd = m_server_socket->accept(client_addr);
+
+    std::unique_ptr<Socket> client_socket(new Socket(client_fd, client_addr.ip(), client_addr.port()));
+    client_socket->setnonblock();
+    m_handle_new_connection_callback_fn(std::move(client_socket));
 }
 
-void Acceptor::set_handle_connection_callbackfn(std::function<void(std::shared_ptr<Socket>)> fn)
-{
-    m_handle_connection_callbackfn = fn;
-}
+void Acceptor::set_handle_new_connection_callback_fn(std::function<void (std::unique_ptr<Socket>)> fn) { m_handle_new_connection_callback_fn = fn; }

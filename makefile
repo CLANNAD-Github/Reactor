@@ -1,12 +1,13 @@
-all : echoserver tcpclient
+all : client echoserver
 
 CFLAGS = -g
+lib = -l pthread
 
-echoserver : echoserver.cpp InetAddress.h InetAddress.cpp Socket.h Socket.cpp Epoll.h Epoll.cpp Channel.h Channel.cpp EventLoop.h EventLoop.cpp TcpServer.h TcpServer.cpp Acceptor.h Acceptor.cpp Connection.h Connection.cpp Buffer.h Buffer.cpp EchoServer.h EchoServer.cpp ThreadPool.h ThreadPool.cpp Timestamp.h Timestamp.cpp
-	g++ $(CFLAGS) -o echoserver echoserver.cpp InetAddress.cpp Socket.cpp Epoll.cpp Channel.cpp EventLoop.cpp TcpServer.cpp Acceptor.cpp Connection.cpp Buffer.cpp EchoServer.cpp ThreadPool.cpp Timestamp.cpp -lpthread
+client : client.cpp InetAddress.cpp
+	g++ $(CFLAGS) -o client client.cpp InetAddress.cpp
 
-tcpclient : tcpclient.cpp InetAddress.h InetAddress.cpp Timestamp.cpp
-	g++ $(CFLAGS) -o tcpclient tcpclient.cpp InetAddress.cpp Timestamp.cpp
+echoserver : echoserver.cpp EchoServer.cpp InetAddress.cpp Socket.cpp Epoll.cpp Channel.cpp EventLoop.cpp TcpServer.cpp Acceptor.cpp Connection.cpp Buffer.cpp ThreadPool.cpp TimeStamp.cpp
+	g++ $(CFLAGS) -o echoserver echoserver.cpp EchoServer.cpp InetAddress.cpp Socket.cpp Epoll.cpp Channel.cpp EventLoop.cpp TcpServer.cpp Acceptor.cpp Connection.cpp Buffer.cpp ThreadPool.cpp TimeStamp.cpp $(lib)
 
 clean:
-	rm echoserver tcpclient
+	rm client echoserver

@@ -1,122 +1,89 @@
-
 #include "Channel.h"
-#include "Socket.h"
-#include "Connection.h"
-#include <string.h>
+#include "EventLoop.h"
+#include <sys/epoll.h>
 
-Channel::Channel(EventLoop* evloop, int fd) : m_evloop(evloop), m_fd(fd)
+Channel::Channel(EventLoop * eventloop, int fd, bool islisten)
+    : m_eventloop(eventloop), m_fd(fd), m_event(0), m_revent(0), m_islisten(islisten), m_inepoll(false)
 {}
 
-// 析构函数什么也不做，因为 fd 、 epoll 都是从外部传递而来，并不属于 Channel 本身
 Channel::~Channel()
-{}
-
-int Channel::get_fd() const
 {
-    return m_fd;
+    m_eventloop->remove_channel(this);
 }
 
-void Channel::use_ET()
-{
-    m_event = m_event | EPOLLET;
-}
+int Channel::fd() const { return m_fd; }
+bool Channel::islisten() const { return m_islisten; }
+
+bool Channel::inepoll() const { return m_inepoll; }
+void Channel::set_inepoll(bool inepoll) { m_inepoll = inepoll; }
+uint32_t Channel::event() const { return m_event; }
+void Channel::set_event(uint32_t event) { m_event = event; }
+uint32_t Channel::revent() const { return m_revent; }
+void Channel::set_revent(uint32_t revent) { m_revent = revent; }
 
 void Channel::enable_read()
 {
-    m_event = m_event | EPOLLIN;
-    m_evloop->update_channel(this);
+    m_event |= EPOLLIN;
+    update_channel();
 }
 
 void Channel::enable_write()
 {
-    m_event = m_event | EPOLLOUT;
-    m_evloop->update_channel(this);
+    m_event |= EPOLLOUT;
+    update_channel();
+}
+
+void Channel::enable_et()
+{
+    m_event |= EPOLLET;
+    update_channel();
 }
 
 void Channel::disable_read()
 {
-    m_event = m_event & (~EPOLLIN);
-    m_evloop->update_channel(this);
+    m_event &= (~EPOLLIN);
+    update_channel();
 }
 
 void Channel::disable_write()
 {
-    m_event = m_event & (~EPOLLOUT);
-    m_evloop->update_channel(this);
+    m_event &= (~EPOLLOUT);
+    update_channel();
 }
 
-void Channel::disable_all()
+void Channel::disable_et()
 {
-    m_event = 0;
-    m_evloop->update_channel(this);
+    m_event &= (~EPOLLET);
+    update_channel();
 }
 
-void Channel::remove()
-{
-    m_evloop->remove_channel(this);
-}
-
-void Channel::set_inepoll()
-{
-    m_inepoll = true;
-}
-
-void Channel::set_revent(uint32_t ev)
-{
-    m_revent = ev;
-}
-
-bool Channel::in_epoll() const
-{
-    return m_inepoll;
-}
-
-uint32_t Channel::get_event() const
-{
-    return m_event;
-}
-
-uint32_t Channel::get_revent() const
-{
-    return m_revent;
-}
+void Channel::update_channel() { m_eventloop->update_channel(this); }
 
 void Channel::handle_event()
 {
-    if (m_revent & (EPOLLRDHUP)) // 对方已关闭，检测不到，有些系统可能不支持该事件
+    if (m_revent & EPOLLHUP)
     {
-        m_close_callbackfn();
+        if (m_close_callback_fn)
+            m_close_callback_fn();
     }
-    else if (m_revent & (EPOLLIN | EPOLLPRI)) // 处理读事件，带外数据
+    else if (m_revent & (EPOLLIN | EPOLLPRI))
     {
-        m_read_callbackfn();
+        if(m_read_callback_fn)
+            m_read_callback_fn();
     }
-    else if (m_revent & EPOLLOUT) // 处理写事件
+    else if (m_revent & EPOLLOUT)
     {
-        m_write_callbackfn();
+        if (m_write_callback_fn)
+            m_write_callback_fn();        
     }
-    else // 发生错误
+    else
     {
-        m_error_callbackfn();
+        if (m_error_callback_fn)
+            m_error_callback_fn();
     }
 }
 
-void Channel::set_read_callbackfn(std::function<void()> fn)
-{
-    m_read_callbackfn = fn;
-}
-
-void Channel::set_write_callbackfn(std::function<void ()> fn)
-{
-    m_write_callbackfn = fn;
-}
-
-void Channel::set_close_callbackfn(std::function<void()> fn)
-{
-    m_close_callbackfn = fn;
-}
-
-void Channel::set_error_callbackfn(std::function<void()> fn)
-{
-    m_error_callbackfn = fn;
-}
+void Channel::set_read_callback_fn(std::function<void ()> fn) { m_read_callback_fn = fn; }
+void Channel::set_write_callback_fn(std::function<void ()> fn) { m_write_callback_fn = fn; }
+void Channel::set_error_callback_fn(std::function<void ()> fn) { m_error_callback_fn = fn; }
+void Channel::set_close_callback_fn(std::function<void ()> fn) { m_close_callback_fn = fn; }

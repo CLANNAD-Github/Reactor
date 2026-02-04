@@ -1,4 +1,5 @@
 #pragma once
+
 #include <sys/epoll.h>
 #include <vector>
 
@@ -7,16 +8,14 @@ class Channel;
 class Epoll
 {
 private:
-    static const int MaxEvents = 128;
-    int m_epollfd;
-    epoll_event m_evs[MaxEvents];
-    int m_timeout;
+    static const int MaxEvent = 128;
+    const int m_epollfd;
+    epoll_event m_arr_ev[MaxEvent];
 public:
-    Epoll(int timeout);
+    Epoll();
     ~Epoll();
 
-    void add_channel(Channel * ch);
-    void update_channel(Channel * ch);
-    void remove_channel(Channel * ch);
-    std::vector<Channel*> loop();
+    bool update_channel(Channel* ch);
+    bool remove_channel(Channel* ch);
+    std::vector<Channel*> loop(int timeout);
 };

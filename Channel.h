@@ -1,44 +1,55 @@
 #pragma once
-#include <memory>
-#include "EventLoop.h"
 
+#include <functional>
+
+typedef unsigned int uint32_t;
+
+class EventLoop;
 class Socket;
+class Acceptor;
 
 class Channel
 {
 private:
-    int m_fd = -1;                      // 一个 Channel 对应一个 socket fd
-    EventLoop * m_evloop;               // 事件循环，一个 Channel 对应一个 事件循环
-    bool m_inepoll = false;             // Channel 是否已经在 epoll 红黑树中
-    uint32_t m_event = 0;               // 监听的事件
-    uint32_t m_revent = 0;              // 返回的事件
-    std::function<void()> m_read_callbackfn;  // 读取数据的回调函数 Channel 对象时就指定
-    std::function<void()> m_write_callbackfn;  // 读取数据的回调函数 Channel 对象时就指定
-    std::function<void()> m_close_callbackfn;  // 关闭链接的回调函数 Channel 对象时就指定
-    std::function<void()> m_error_callbackfn;  // 发生错误的回调函数 Channel 对象时就指定
+    int m_fd;
+    EventLoop * m_eventloop;
+    uint32_t m_event;
+    uint32_t m_revent;
+    bool m_inepoll;
+    bool m_islisten;
+
+    std::function<void ()> m_read_callback_fn;
+    std::function<void ()> m_write_callback_fn;
+    std::function<void ()> m_error_callback_fn;
+    std::function<void ()> m_close_callback_fn;
+
 public:
-    Channel(EventLoop* evloop, int fd);
+    Channel(EventLoop * eventloop, int fd, bool islisten = false);
     ~Channel();
 
-    int get_fd() const;
-    uint32_t get_event() const;
-    uint32_t get_revent() const;
+    int fd() const;
+    bool inepoll() const;
+    void set_inepoll(bool inepoll);
+    void set_event(uint32_t event);
+    void set_revent(uint32_t revent);
+    uint32_t event() const;
+    uint32_t revent() const;
+    bool islisten() const;
 
-    void use_ET();
-    void enable_read();   // 注册写事件
-    void enable_write();   // 注册读事件
-    void disable_write();  // 取消关注写事件
-    void disable_read();  // 取消关注读事件
-    void disable_all();  // 取消关注全部的事件
-    void remove();  // 将 channel 从 epoll 红黑树中删除
-    void set_inepoll();
-    void set_revent(uint32_t ev);
-    bool in_epoll() const;
-    
+    void enable_et();
+    void enable_read();
+    void enable_write();
+
+    void disable_et();
+    void disable_read();
+    void disable_write();
+    void update_channel();
+
     void handle_event();
-    void set_read_callbackfn(std::function<void ()> fn);
-    void set_write_callbackfn(std::function<void ()> fn);
-    void set_close_callbackfn(std::function<void ()> fn);
-    void set_error_callbackfn(std::function<void ()> fn);
+
+    void set_read_callback_fn(std::function<void ()> fn);
+    void set_write_callback_fn(std::function<void ()> fn);
+    void set_error_callback_fn(std::function<void ()> fn);
+    void set_close_callback_fn(std::function<void ()> fn);
 };
 
